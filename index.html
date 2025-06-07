@@ -1,47 +1,170 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <title>استمارة مسح بطاقة الهوية</title>
-  <script src="https://unpkg.com/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+  <title>استمارة مسح البطاقة</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f9f9f9;
+      margin: 0;
+      padding: 30px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .form-container {
+      background: #ffffff;
+      padding: 25px 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      width: 100%;
+      max-width: 420px;
+      margin-bottom: 50px;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #333;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: bold;
+      color: #444;
+    }
+
+    input, textarea {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 15px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+
+    textarea {
+      resize: vertical;
+      height: 90px;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background-color: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    video {
+      width: 100%;
+      height: auto;
+      border-radius: 6px;
+      margin-bottom: 15px;
+      object-fit: cover;
+    }
+
+    .hidden-canvas {
+      display: none;
+    }
+
+    .jotform-container {
+      width: 100%;
+      max-width: 700px;
+    }
+  </style>
 </head>
 <body>
-  <form id="idForm">
-    <label for="idUpload">رفع صورة البطاقة:</label>
-    <input type="file" id="idUpload" accept="image/*" capture="camera">
-    <button type="submit">إرسال</button>
-  </form>
-  <div id="result">
-    <label>الاسم:</label><input type="text" id="nameField"><br>
-    <label>رقم الهوية:</label><input type="text" id="idNumberField"><br>
-    <label>تاريخ الميلاد:</label><input type="text" id="dobField">
-  </div>
 
-  <script>
-    document.getElementById('idForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const fileInput = document.getElementById('idUpload');
-      const file = fileInput.files[0];
-      if (file) {
-        const { createWorker } = Tesseract;
-        const worker = await createWorker('ara'); // دعم اللغة العربية
-        await worker.setParameters({
-          tessedit_char_whitelist: 'ابتثجحخدذرزسشصضطظعغفقكلمنهوي1234567890' // أحرف عربية وأرقام
-        });
-        const { data: { text } } = await worker.recognize(file);
-        await worker.terminate();
+<div class="form-container">
+  <h2>مسح بطاقة الهوية</h2>
 
-        // استخراج البيانات باستخدام تعبيرات منتظمة
-        const nameMatch = text.match(/الاسم[\s\S]*?([\u0600-\u06FF\s]+)/); // استخراج الاسم
-        const idMatch = text.match(/رقم الهوية[\s\S]*?(\d+)/); // استخراج رقم الهوية
-        const dobMatch = text.match(/تاريخ الميلاد[\s\S]*?(\d{2}\/\d{2}\/\d{4})/); // استخراج تاريخ الميلاد
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="canvas" class="hidden-canvas"></canvas>
 
-        // تعبئة الحقول
-        document.getElementById('nameField').value = nameMatch ? nameMatch[1].trim() : '';
-        document.getElementById('idNumberField').value = idMatch ? idMatch[1] : '';
-        document.getElementById('dobField').value = dobMatch ? dobMatch[1] : '';
-      }
+  <button id="startBtn">تشغيل الكاميرا</button>
+  <button id="scanBtn">مسح البطاقة</button>
+
+  <label for="idNumber">رقم البطاقة:</label>
+  <input type="text" id="idNumber">
+
+  <label for="lastName">اللقب:</label>
+  <input type="text" id="lastName">
+
+  <label for="firstName">الاسم:</label>
+  <input type="text" id="firstName">
+
+  <label for="birthdate">تاريخ الميلاد:</label>
+  <input type="text" id="birthdate">
+
+  <label for="address">العنوان:</label>
+  <textarea id="address"></textarea>
+
+  <label for="ocrText">النص الكامل (للتحقق):</label>
+  <textarea id="ocrText" readonly></textarea>
+</div>
+
+<div class="jotform-container">
+  <script type="text/javascript" src="https://form.jotform.com/jsform/251572772707059"></script>
+</div>
+
+<script>
+const video = document.getElementById('video');
+let currentStream;
+
+async function startCamera() {
+  if (currentStream) currentStream.getTracks().forEach(t => t.stop());
+  try {
+    currentStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { exact: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
     });
-  </script>
+    video.srcObject = currentStream;
+  } catch {
+    currentStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    video.srcObject = currentStream;
+  }
+}
+
+function extractField(label, text) {
+  const regex = new RegExp(label + '\\s*[:\\-]?[\\s\\n]*([^\\n]+)', 'i');
+  const match = text.match(regex);
+  return match ? match[1].trim() : '';
+}
+
+async function scanCard() {
+  const canvas = document.getElementById('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  const { data: { text } } = await Tesseract.recognize(canvas, 'ara');
+  document.getElementById('ocrText').value = text;
+
+  document.getElementById('idNumber').value = extractField('رقم البطاقة', text);
+  document.getElementById('lastName').value = extractField('اللقب', text);
+  document.getElementById('firstName').value = extractField('الاسم', text);
+  document.getElementById('birthdate').value = extractField('تاريخ الميلاد', text);
+  document.getElementById('address').value = extractField('العنوان', text);
+}
+
+document.getElementById('startBtn').onclick = startCamera;
+document.getElementById('scanBtn').onclick = scanCard;
+</script>
+
 </body>
 </html>
