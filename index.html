@@ -41,22 +41,19 @@
 </div>
 
 <label>رقم البطاقة (ID Number):</label>
-<input type="text" id="idNumber" readonly />
+<input type="text" id="idNumber" />
 
 <label>اللقب (Last Name):</label>
-<input type="text" id="lastName" readonly />
+<input type="text" id="lastName" />
 
 <label>الاسم (First Name):</label>
-<input type="text" id="firstName" readonly />
+<input type="text" id="firstName" />
 
 <label>تاريخ الميلاد (Birthdate):</label>
-<input type="text" id="birthdate" readonly />
+<input type="text" id="birthdate" />
 
 <label>العنوان (Address):</label>
-<textarea id="address" readonly></textarea>
-
-<label>Full OCR Text:</label>
-<textarea id="fullText" readonly></textarea>
+<textarea id="address"></textarea>
 
 <script>
   const video = document.getElementById('video');
@@ -80,10 +77,8 @@
   }
 
   function extractFields(text) {
-    // Normalize text by lines
     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-    // Prepare an object for the fields
     let fields = {
       idNumber: '',
       lastName: '',
@@ -92,7 +87,6 @@
       address: ''
     };
 
-    // Create a helper function to get the line after a keyword
     function getAfterKeyword(keyword) {
       const index = lines.findIndex(line => line.includes(keyword));
       if (index >= 0 && index + 1 < lines.length) {
@@ -101,13 +95,11 @@
       return '';
     }
 
-    // Extract each field by looking for the Arabic label
     fields.idNumber = getAfterKeyword('رقم البطاقة');
     fields.lastName = getAfterKeyword('اللقب');
     fields.firstName = getAfterKeyword('الاسم');
     fields.birthdate = getAfterKeyword('تاريخ الميلاد');
 
-    // For address, since it can be multiline, we try to grab all lines after العنوان until next label or end
     const addrIndex = lines.findIndex(line => line.includes('العنوان'));
     if (addrIndex >= 0) {
       let addrLines = [];
@@ -132,7 +124,6 @@
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Optional preprocessing (grayscale + threshold)
     let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     let data = imageData.data;
     for (let i = 0; i < data.length; i += 4) {
@@ -143,8 +134,6 @@
     ctx.putImageData(imageData, 0, 0);
 
     const { data: { text } } = await Tesseract.recognize(canvas, 'ara');
-
-    document.getElementById('fullText').value = text;
 
     const fields = extractFields(text);
 
