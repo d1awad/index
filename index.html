@@ -1,90 +1,47 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar">
 <head>
-  <meta charset="UTF-8" />
-  <title>بطاقة تعريف OCR</title>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 10px; direction: rtl; text-align: right; }
-    video, canvas { border: 1px solid #ccc; width: 320px; height: 203px; object-fit: cover; }
-    label { display: block; margin-top: 10px; font-weight: bold; }
-    input, textarea { width: 320px; font-size: 1.1em; padding: 5px; }
-    textarea { height: 100px; }
-  </style>
+  <meta charset="UTF-8">
+  <title>استمارة مسح بطاقة الهوية</title>
+  <script src="https://unpkg.com/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
 </head>
 <body>
+  <form id="idForm">
+    <label for="idUpload">رفع صورة البطاقة:</label>
+    <input type="file" id="idUpload" accept="image/*" capture="camera">
+    <button type="submit">إرسال</button>
+  </form>
+  <div id="result">
+    <label>الاسم:</label><input type="text" id="nameField"><br>
+    <label>رقم الهوية:</label><input type="text" id="idNumberField"><br>
+    <label>تاريخ الميلاد:</label><input type="text" id="dobField">
+  </div>
 
-<h2>ماسح بطاقة تعريف</h2>
+  <script>
+    document.getElementById('idForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fileInput = document.getElementById('idUpload');
+      const file = fileInput.files[0];
+      if (file) {
+        const { createWorker } = Tesseract;
+        const worker = await createWorker('ara'); // دعم اللغة العربية
+        await worker.setParameters({
+          tessedit_char_whitelist: 'ابتثجحخدذرزسشصضطظعغفقكلمنهوي1234567890' // أحرف عربية وأرقام
+        });
+        const { data: { text } } = await worker.recognize(file);
+        await worker.terminate();
 
-<video id="video" autoplay muted playsinline></video>
-<canvas id="canvas" style="display:none;"></canvas>
+        // استخراج البيانات باستخدام تعبيرات منتظمة
+        const nameMatch = text.match(/الاسم[\s\S]*?([\u0600-\u06FF\s]+)/); // استخراج الاسم
+        const idMatch = text.match(/رقم الهوية[\s\S]*?(\d+)/); // استخراج رقم الهوية
+        const dobMatch = text.match(/تاريخ الميلاد[\s\S]*?(\d{2}\/\d{2}\/\d{4})/); // استخراج تاريخ الميلاد
 
-<button id="startBtn">تشغيل الكاميرا</button>
-<button id="scanBtn">مسح البطاقة</button>
-
-<label>النص الكامل:</label>
-<textarea id="ocrText" readonly></textarea>
-
-<label>رقم البطاقة:</label>
-<input type="text" id="idNumber" />
-
-<label>اللقب:</label>
-<input type="text" id="lastName" />
-
-<label>الاسم:</label>
-<input type="text" id="firstName" />
-
-<label>تاريخ الميلاد:</label>
-<input type="text" id="birthdate" />
-
-<label>العنوان:</label>
-<textarea id="address"></textarea>
-
-<script>
-const video = document.getElementById('video');
-let currentStream;
-
-async function startCamera() {
-  if (currentStream) currentStream.getTracks().forEach(t => t.stop());
-  try {
-    currentStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { exact: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false
+        // تعبئة الحقول
+        document.getElementById('nameField').value = nameMatch ? nameMatch[1].trim() : '';
+        document.getElementById('idNumberField').value = idMatch ? idMatch[1] : '';
+        document.getElementById('dobField').value = dobMatch ? dobMatch[1] : '';
+      }
     });
-    video.srcObject = currentStream;
-  } catch {
-    alert("لم يتم العثور على كاميرا خلفية، سيتم استخدام الكاميرا المتاحة.");
-    currentStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    video.srcObject = currentStream;
-  }
-}
-
-function extractField(label, text) {
-  const regex = new RegExp(label + '\\s*[:\\-]?[\\s\\n]*([^\\n]+)', 'i');
-  const match = text.match(regex);
-  return match ? match[1].trim() : '';
-}
-
-async function scanCard() {
-  const canvas = document.getElementById('canvas');
-  canvas.width = 320;
-  canvas.height = 203;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-  const { data: { text } } = await Tesseract.recognize(canvas, 'ara');
-  document.getElementById('ocrText').value = text;
-
-  document.getElementById('idNumber').value = extractField('رقم البطاقة', text);
-  document.getElementById('lastName').value = extractField('اللقب', text);
-  document.getElementById('firstName').value = extractField('الاسم', text);
-  document.getElementById('birthdate').value = extractField('تاريخ الميلاد', text);
-  document.getElementById('address').value = extractField('العنوان', text);
-}
-
-document.getElementById('startBtn').onclick = startCamera;
-document.getElementById('scanBtn').onclick = scanCard;
-</script>
-
+  </script>
 </body>
 </html>
