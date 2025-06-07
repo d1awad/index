@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>ID Scanner with Rear Camera</title>
+  <title>ID Scanner with Rear Camera (Horizontal)</title>
 </head>
 <body>
   <h2>Scan Your ID (Select Camera)</h2>
@@ -15,7 +15,7 @@
   <br/><br/>
   <button id="scanBtn">📷 Scan ID</button>
   <br/><br/>
-  <video id="video" width="320" height="203" autoplay playsinline></video>
+  <video id="video" width="203" height="320" autoplay playsinline></video>
   <canvas id="canvas" style="display:none;"></canvas>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.4/dist/tesseract.min.js"></script>
@@ -54,8 +54,8 @@
         const constraints = {
           video: {
             deviceId: deviceId ? { exact: deviceId } : undefined,
-            width: 320,
-            height: 203,
+            width: 203,
+            height: 320,
             facingMode: "environment"
           }
         };
@@ -72,8 +72,8 @@
         return;
       }
       const canvas = document.getElementById('canvas');
-      canvas.width = 320;
-      canvas.height = 203;
+      canvas.width = 203;
+      canvas.height = 320;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
