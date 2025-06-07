@@ -1,44 +1,39 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>ID Scanner Form</title>
-</head>
-<body>
-  <h2>Scan Your ID</h2>
-  <input type="text" id="idField" placeholder="Your ID number">
-  <br><br>
-  <button onclick="startCamera()">📷 Scan ID</button>
-  <br><br>
-  <video id="video" width="320" autoplay></video>
-  <canvas id="canvas" style="display:none;"></canvas>
+<script>
+  const video = document.getElementById("video");
 
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.4/dist/tesseract.min.js"></script>
-  <script>
-    const video = document.getElementById("video");
+  async function startCamera() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoDevices = devices.filter(device => device.kind === 'videoinput');
 
-    function startCamera() {
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(stream => {
-        video.srcObject = stream;
-        setTimeout(() => captureAndRead(stream), 3000); // Wait 3 sec then capture
-      });
-    }
+    let backCamera = videoDevices.find(device => /back|rear|environment/gi.test(device.label));
+    if (!backCamera) backCamera = videoDevices[0];
 
-    function captureAndRead(stream) {
-      const canvas = document.getElementById("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      canvas.getContext("2d").drawImage(video, 0, 0);
+    const constraints = {
+      video: {
+        deviceId: backCamera.deviceId ? { exact: backCamera.deviceId } : undefined
+      }
+    };
 
-      Tesseract.recognize(canvas, 'eng').then(({ data: { text } }) => {
-        const idMatch = text.match(/\d{6,}/); // look for 6+ digit number
-        if (idMatch) {
-          document.getElementById("idField").value = idMatch[0];
-        } else {
-          alert("No ID number found.");
-        }
-        stream.getTracks().forEach(track => track.stop());
-      });
-    }
-  </script>
-</body>
-</html>
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+
+    setTimeout(() => captureAndRead(stream), 3000);
+  }
+
+  function captureAndRead(stream) {
+    const canvas = document.getElementById("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0);
+
+    Tesseract.recognize(canvas, 'eng').then(({ data: { text } }) => {
+      const idMatch = text.match(/\d{6,}/);
+      if (idMatch) {
+        document.getElementById("idField").value = idMatch[0];
+      } else {
+        alert("No ID number found.");
+      }
+      stream.getTracks().forEach(track => track.stop());
+    });
+  }
+</script>
