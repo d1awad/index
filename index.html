@@ -3,43 +3,57 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Arabic ID Card Scanner</title>
+<title>Arabic ID Card Scanner - Extract All Details</title>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
 <style>
-  body {
-    font-family: Arial, sans-serif;
-    padding: 10px;
-  }
+  body { font-family: Arial, sans-serif; padding: 10px; }
   video, canvas {
     border: 1px solid #ccc;
-    width: 320px;
-    height: 203px; /* Horizontal ID card size */
+    width: 320px; height: 203px; /* horizontal ID card size */
     object-fit: cover;
-    transform: rotate(0deg);
   }
-  #controls {
+  #controls { margin-top: 10px; }
+  label {
+    display: block;
     margin-top: 10px;
+    font-weight: bold;
   }
-  input[type=text] {
+  input, textarea {
     width: 320px;
-    font-size: 1.2em;
+    font-size: 1.1em;
     padding: 5px;
+  }
+  textarea {
+    height: 150px;
   }
 </style>
 </head>
 <body>
 
-<h2>Arabic ID Card Scanner</h2>
+<h2>Arabic ID Card Scanner - Extract All Details</h2>
 
 <video id="video" autoplay muted playsinline></video>
 <canvas id="canvas" style="display:none;"></canvas>
 
 <div id="controls">
   <button id="startBtn">Start Camera</button>
-  <button id="captureBtn">Scan ID Number</button>
+  <button id="captureBtn">Scan Card</button>
 </div>
 
-<input type="text" id="idField" placeholder="Scanned ID number appears here" readonly />
+<label>National ID Number:</label>
+<input type="text" id="idField" readonly />
+
+<label>Full Name (Arabic):</label>
+<input type="text" id="nameField" readonly />
+
+<label>Birthdate:</label>
+<input type="text" id="birthField" readonly />
+
+<label>Phone Number:</label>
+<input type="text" id="phoneField" readonly />
+
+<label>Full OCR Text:</label>
+<textarea id="fullText" readonly></textarea>
 
 <script>
   const video = document.getElementById('video');
@@ -51,11 +65,7 @@
     }
     try {
       currentStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { exact: "environment" }, // Rear camera
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
+        video: { facingMode: { exact: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false
       });
       video.srcObject = currentStream;
@@ -66,43 +76,64 @@
     }
   }
 
+  function extractDetails(text) {
+    // National ID: digits 6 or more
+    const idMatch = text.match(/\b\d{6,}\b/);
+    const idNumber = idMatch ? idMatch[0] : 'Not found';
+
+    // Phone number: digits with optional +, spaces, dashes
+    const phoneMatch = text.match(/(\+?\d[\d\s\-]{6,}\d)/);
+    const phoneNumber = phoneMatch ? phoneMatch[0].replace(/[\s\-]/g, '') : 'Not found';
+
+    // Birthdate: look for date patterns (simple, e.g. DD/MM/YYYY or YYYY/MM/DD or Arabic date formats)
+    const birthMatch = text.match(/(\d{2}\/\d{2}\/\d{4}|\d{4}\/\d{2}\/\d{2})/);
+    const birthdate = birthMatch ? birthMatch[0] : 'Not found';
+
+    // Name extraction heuristic:
+    // Assuming name is the longest Arabic text line excluding numbers
+    // Split lines, filter Arabic text lines without digits, pick longest
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 3);
+    const arabicLines = lines.filter(line => /[\u0600-\u06FF]/.test(line) && !/\d/.test(line));
+    let name = 'Not found';
+    if (arabicLines.length) {
+      name = arabicLines.reduce((a, b) => a.length > b.length ? a : b);
+    }
+
+    return { idNumber, phoneNumber, birthdate, name };
+  }
+
   async function captureAndRead() {
     if (!currentStream) {
       alert('Camera not started!');
       return;
     }
     const canvas = document.getElementById('canvas');
-    // Set canvas size to horizontal ID card size (wider than tall)
     canvas.width = 320;
     canvas.height = 203;
-
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Preprocess: convert to grayscale & increase contrast
+    // Preprocess: grayscale + threshold
     let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     let data = imageData.data;
     for (let i = 0; i < data.length; i += 4) {
-      // Grayscale formula
       let gray = data[i]*0.3 + data[i+1]*0.59 + data[i+2]*0.11;
-      // Increase contrast threshold
       gray = gray > 128 ? 255 : 0;
       data[i] = data[i+1] = data[i+2] = gray;
     }
     ctx.putImageData(imageData, 0, 0);
 
-    // Run OCR with Arabic language and Arabic+Western digits whitelist
-    const { data: { text } } = await Tesseract.recognize(canvas, 'ara', {
-      tessedit_char_whitelist: '0123456789٠١٢٣٤٥٦٧٨٩'
-    });
+    // OCR Arabic + western digits
+    const { data: { text } } = await Tesseract.recognize(canvas, 'ara');
 
-    // Match Arabic or western digits (6 or more digits)
-    const idMatch = text.match(/[\d٠١٢٣٤٥٦٧٨٩]{6,}/);
-    if (idMatch) {
-      document.getElementById('idField').value = idMatch[0];
-    } else {
-      alert('No ID number detected. Try again.');
-    }
+    document.getElementById('fullText').value = text;
+
+    const { idNumber, phoneNumber, birthdate, name } = extractDetails(text);
+
+    document.getElementById('idField').value = idNumber;
+    document.getElementById('phoneField').value = phoneNumber;
+    document.getElementById('birthField').value = birthdate;
+    document.getElementById('nameField').value = name;
   }
 
   document.getElementById('startBtn').onclick = startCamera;
