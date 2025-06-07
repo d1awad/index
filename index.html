@@ -1,39 +1,104 @@
-<script>
-  const video = document.getElementById("video");
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ID Scanner with Rear Camera</title>
+</head>
+<body>
+  <h2>Scan Your ID (Select Camera)</h2>
 
-  async function startCamera() {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const videoDevices = devices.filter(device => device.kind === 'videoinput');
+  <label for="cameraSelect">Choose Camera:</label>
+  <select id="cameraSelect"></select>
 
-    let backCamera = videoDevices.find(device => /back|rear|environment/gi.test(device.label));
-    if (!backCamera) backCamera = videoDevices[0];
+  <br/><br/>
+  <input type="text" id="idField" placeholder="Your ID number" style="width: 320px; font-size: 1.2em;" />
+  <br/><br/>
+  <button id="scanBtn">📷 Scan ID</button>
+  <br/><br/>
+  <video id="video" width="320" height="203" autoplay playsinline></video>
+  <canvas id="canvas" style="display:none;"></canvas>
 
-    const constraints = {
-      video: {
-        deviceId: backCamera.deviceId ? { exact: backCamera.deviceId } : undefined
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.4/dist/tesseract.min.js"></script>
+  <script>
+    const video = document.getElementById('video');
+    const cameraSelect = document.getElementById('cameraSelect');
+    let currentStream = null;
+
+    async function listCameras() {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      cameraSelect.innerHTML = '';
+      videoDevices.forEach(device => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.text = device.label || `Camera ${cameraSelect.length + 1}`;
+        cameraSelect.appendChild(option);
+      });
+
+      // Try to select rear camera by default (look for "back", "rear", "environment" in label)
+      let rearCamera = videoDevices.find(d =>
+        /back|rear|environment/gi.test(d.label)
+      );
+      if (rearCamera) {
+        cameraSelect.value = rearCamera.deviceId;
+      } else if (videoDevices.length > 0) {
+        cameraSelect.value = videoDevices[0].deviceId;
       }
+    }
+
+    async function startCamera(deviceId) {
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+      }
+      try {
+        const constraints = {
+          video: {
+            deviceId: deviceId ? { exact: deviceId } : undefined,
+            width: 320,
+            height: 203,
+            facingMode: "environment"
+          }
+        };
+        currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = currentStream;
+      } catch (err) {
+        alert('Error starting camera: ' + err);
+      }
+    }
+
+    async function captureAndRead() {
+      if (!currentStream) {
+        alert('Camera not started!');
+        return;
+      }
+      const canvas = document.getElementById('canvas');
+      canvas.width = 320;
+      canvas.height = 203;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
+      const idMatch = text.match(/\d{6,}/); // match number with 6+ digits
+
+      if (idMatch) {
+        document.getElementById('idField').value = idMatch[0];
+      } else {
+        alert('No ID number detected. Try again.');
+      }
+    }
+
+    cameraSelect.onchange = () => {
+      startCamera(cameraSelect.value);
     };
 
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    video.srcObject = stream;
+    document.getElementById('scanBtn').onclick = () => {
+      captureAndRead();
+    };
 
-    setTimeout(() => captureAndRead(stream), 3000);
-  }
-
-  function captureAndRead(stream) {
-    const canvas = document.getElementById("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext("2d").drawImage(video, 0, 0);
-
-    Tesseract.recognize(canvas, 'eng').then(({ data: { text } }) => {
-      const idMatch = text.match(/\d{6,}/);
-      if (idMatch) {
-        document.getElementById("idField").value = idMatch[0];
-      } else {
-        alert("No ID number found.");
-      }
-      stream.getTracks().forEach(track => track.stop());
+    // On load
+    listCameras().then(() => {
+      startCamera(cameraSelect.value);
     });
-  }
-</script>
+  </script>
+</body>
+</html>
