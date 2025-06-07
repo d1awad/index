@@ -1,151 +1,89 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Arabic ID Card Scanner - Custom Fields</title>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
-<style>
-  body { font-family: Arial, sans-serif; padding: 10px; }
-  video, canvas {
-    border: 1px solid #ccc;
-    width: 320px; height: 203px; /* horizontal ID card size */
-    object-fit: cover;
-  }
-  #controls { margin-top: 10px; }
-  label {
-    display: block;
-    margin-top: 10px;
-    font-weight: bold;
-  }
-  input, textarea {
-    width: 320px;
-    font-size: 1.1em;
-    padding: 5px;
-  }
-  textarea {
-    height: 150px;
-  }
-</style>
+  <meta charset="UTF-8" />
+  <title>بطاقة تعريف OCR</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 10px; direction: rtl; text-align: right; }
+    video, canvas { border: 1px solid #ccc; width: 320px; height: 203px; object-fit: cover; }
+    label { display: block; margin-top: 10px; font-weight: bold; }
+    input, textarea { width: 320px; font-size: 1.1em; padding: 5px; }
+    textarea { height: 100px; }
+  </style>
 </head>
 <body>
 
-<h2>Arabic ID Card Scanner - Custom Fields</h2>
+<h2>ماسح بطاقة تعريف</h2>
 
 <video id="video" autoplay muted playsinline></video>
 <canvas id="canvas" style="display:none;"></canvas>
 
-<div id="controls">
-  <button id="startBtn">Start Camera</button>
-  <button id="captureBtn">Scan Card</button>
-</div>
+<button id="startBtn">تشغيل الكاميرا</button>
+<button id="scanBtn">مسح البطاقة</button>
 
-<label>رقم البطاقة (ID Number):</label>
+<label>النص الكامل:</label>
+<textarea id="ocrText" readonly></textarea>
+
+<label>رقم البطاقة:</label>
 <input type="text" id="idNumber" />
 
-<label>اللقب (Last Name):</label>
+<label>اللقب:</label>
 <input type="text" id="lastName" />
 
-<label>الاسم (First Name):</label>
+<label>الاسم:</label>
 <input type="text" id="firstName" />
 
-<label>تاريخ الميلاد (Birthdate):</label>
+<label>تاريخ الميلاد:</label>
 <input type="text" id="birthdate" />
 
-<label>العنوان (Address):</label>
+<label>العنوان:</label>
 <textarea id="address"></textarea>
 
 <script>
-  const video = document.getElementById('video');
-  let currentStream;
+const video = document.getElementById('video');
+let currentStream;
 
-  async function startCamera() {
-    if (currentStream) {
-      currentStream.getTracks().forEach(track => track.stop());
-    }
-    try {
-      currentStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { exact: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false
-      });
-      video.srcObject = currentStream;
-    } catch (e) {
-      alert('Cannot access rear camera, falling back to any camera.');
-      currentStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      video.srcObject = currentStream;
-    }
+async function startCamera() {
+  if (currentStream) currentStream.getTracks().forEach(t => t.stop());
+  try {
+    currentStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { exact: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    video.srcObject = currentStream;
+  } catch {
+    alert("لم يتم العثور على كاميرا خلفية، سيتم استخدام الكاميرا المتاحة.");
+    currentStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    video.srcObject = currentStream;
   }
+}
 
-  function extractFields(text) {
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+function extractField(label, text) {
+  const regex = new RegExp(label + '\\s*[:\\-]?[\\s\\n]*([^\\n]+)', 'i');
+  const match = text.match(regex);
+  return match ? match[1].trim() : '';
+}
 
-    let fields = {
-      idNumber: '',
-      lastName: '',
-      firstName: '',
-      birthdate: '',
-      address: ''
-    };
+async function scanCard() {
+  const canvas = document.getElementById('canvas');
+  canvas.width = 320;
+  canvas.height = 203;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    function getAfterKeyword(keyword) {
-      const index = lines.findIndex(line => line.includes(keyword));
-      if (index >= 0 && index + 1 < lines.length) {
-        return lines[index + 1];
-      }
-      return '';
-    }
+  const { data: { text } } = await Tesseract.recognize(canvas, 'ara');
+  document.getElementById('ocrText').value = text;
 
-    fields.idNumber = getAfterKeyword('رقم البطاقة');
-    fields.lastName = getAfterKeyword('اللقب');
-    fields.firstName = getAfterKeyword('الاسم');
-    fields.birthdate = getAfterKeyword('تاريخ الميلاد');
+  document.getElementById('idNumber').value = extractField('رقم البطاقة', text);
+  document.getElementById('lastName').value = extractField('اللقب', text);
+  document.getElementById('firstName').value = extractField('الاسم', text);
+  document.getElementById('birthdate').value = extractField('تاريخ الميلاد', text);
+  document.getElementById('address').value = extractField('العنوان', text);
+}
 
-    const addrIndex = lines.findIndex(line => line.includes('العنوان'));
-    if (addrIndex >= 0) {
-      let addrLines = [];
-      for (let i = addrIndex + 1; i < lines.length; i++) {
-        if (['رقم البطاقة','اللقب','الاسم','تاريخ الميلاد'].some(k => lines[i].includes(k))) break;
-        addrLines.push(lines[i]);
-      }
-      fields.address = addrLines.join(' ');
-    }
-
-    return fields;
-  }
-
-  async function captureAndRead() {
-    if (!currentStream) {
-      alert('Camera not started!');
-      return;
-    }
-    const canvas = document.getElementById('canvas');
-    canvas.width = 320;
-    canvas.height = 203;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    let data = imageData.data;
-    for (let i = 0; i < data.length; i += 4) {
-      let gray = data[i]*0.3 + data[i+1]*0.59 + data[i+2]*0.11;
-      gray = gray > 128 ? 255 : 0;
-      data[i] = data[i+1] = data[i+2] = gray;
-    }
-    ctx.putImageData(imageData, 0, 0);
-
-    const { data: { text } } = await Tesseract.recognize(canvas, 'ara');
-
-    const fields = extractFields(text);
-
-    document.getElementById('idNumber').value = fields.idNumber;
-    document.getElementById('lastName').value = fields.lastName;
-    document.getElementById('firstName').value = fields.firstName;
-    document.getElementById('birthdate').value = fields.birthdate;
-    document.getElementById('address').value = fields.address;
-  }
-
-  document.getElementById('startBtn').onclick = startCamera;
-  document.getElementById('captureBtn').onclick = captureAndRead;
+document.getElementById('startBtn').onclick = startCamera;
+document.getElementById('scanBtn').onclick = scanCard;
 </script>
 
 </body>
