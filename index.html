@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Arabic ID Card Scanner - Extract All Details</title>
+<title>Arabic ID Card Scanner - Extract All Info</title>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
 <style>
   body { font-family: Arial, sans-serif; padding: 10px; }
@@ -30,7 +30,7 @@
 </head>
 <body>
 
-<h2>Arabic ID Card Scanner - Extract All Details</h2>
+<h2>Arabic ID Card Scanner - Extract All Info</h2>
 
 <video id="video" autoplay muted playsinline></video>
 <canvas id="canvas" style="display:none;"></canvas>
@@ -46,8 +46,20 @@
 <label>Full Name (Arabic):</label>
 <input type="text" id="nameField" readonly />
 
+<label>Father's Name (Arabic):</label>
+<input type="text" id="fatherField" readonly />
+
+<label>Mother's Name (Arabic):</label>
+<input type="text" id="motherField" readonly />
+
 <label>Birthdate:</label>
 <input type="text" id="birthField" readonly />
+
+<label>Issue Date:</label>
+<input type="text" id="issueField" readonly />
+
+<label>Expiry Date:</label>
+<input type="text" id="expiryField" readonly />
 
 <label>Phone Number:</label>
 <input type="text" id="phoneField" readonly />
@@ -77,29 +89,53 @@
   }
 
   function extractDetails(text) {
-    // National ID: digits 6 or more
+    // Normalize text by removing extra spaces and lines
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+    // Extract ID Number (digits 6+)
     const idMatch = text.match(/\b\d{6,}\b/);
     const idNumber = idMatch ? idMatch[0] : 'Not found';
 
-    // Phone number: digits with optional +, spaces, dashes
+    // Extract phone number (digits, +, spaces, dashes)
     const phoneMatch = text.match(/(\+?\d[\d\s\-]{6,}\d)/);
     const phoneNumber = phoneMatch ? phoneMatch[0].replace(/[\s\-]/g, '') : 'Not found';
 
-    // Birthdate: look for date patterns (simple, e.g. DD/MM/YYYY or YYYY/MM/DD or Arabic date formats)
+    // Extract birthdate (simple date pattern DD/MM/YYYY or YYYY/MM/DD)
     const birthMatch = text.match(/(\d{2}\/\d{2}\/\d{4}|\d{4}\/\d{2}\/\d{2})/);
     const birthdate = birthMatch ? birthMatch[0] : 'Not found';
 
-    // Name extraction heuristic:
-    // Assuming name is the longest Arabic text line excluding numbers
-    // Split lines, filter Arabic text lines without digits, pick longest
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 3);
-    const arabicLines = lines.filter(line => /[\u0600-\u06FF]/.test(line) && !/\d/.test(line));
-    let name = 'Not found';
-    if (arabicLines.length) {
-      name = arabicLines.reduce((a, b) => a.length > b.length ? a : b);
+    // Issue date (look for second date after birthdate)
+    let issueDate = 'Not found';
+    if (birthMatch) {
+      const birthIndex = lines.findIndex(line => line.includes(birthMatch[0]));
+      if (birthIndex >= 0 && birthIndex + 1 < lines.length) {
+        const possibleIssue = lines[birthIndex + 1].match(/(\d{2}\/\d{2}\/\d{4}|\d{4}\/\d{2}\/\d{2})/);
+        issueDate = possibleIssue ? possibleIssue[0] : 'Not found';
+      }
     }
 
-    return { idNumber, phoneNumber, birthdate, name };
+    // Expiry date (look for third date or near end)
+    let expiryDate = 'Not found';
+    if (birthMatch) {
+      const birthIndex = lines.findIndex(line => line.includes(birthMatch[0]));
+      if (birthIndex >= 0 && birthIndex + 2 < lines.length) {
+        const possibleExpiry = lines[birthIndex + 2].match(/(\d{2}\/\d{2}\/\d{4}|\d{4}\/\d{2}\/\d{2})/);
+        expiryDate = possibleExpiry ? possibleExpiry[0] : 'Not found';
+      }
+    }
+
+    // Extract Arabic text lines excluding lines with digits (likely names)
+    const arabicLines = lines.filter(line => /[\u0600-\u06FF]/.test(line) && !/\d/.test(line));
+    // Assume:
+    // Name = longest Arabic line
+    // Father's name = second longest Arabic line
+    // Mother's name = third longest Arabic line (if exists)
+    const sortedArabic = arabicLines.sort((a,b) => b.length - a.length);
+    const name = sortedArabic[0] || 'Not found';
+    const father = sortedArabic[1] || 'Not found';
+    const mother = sortedArabic[2] || 'Not found';
+
+    return { idNumber, phoneNumber, birthdate, issueDate, expiryDate, name, father, mother };
   }
 
   async function captureAndRead() {
@@ -113,7 +149,7 @@
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Preprocess: grayscale + threshold
+    // Preprocess image: grayscale + threshold
     let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     let data = imageData.data;
     for (let i = 0; i < data.length; i += 4) {
@@ -123,17 +159,20 @@
     }
     ctx.putImageData(imageData, 0, 0);
 
-    // OCR Arabic + western digits
     const { data: { text } } = await Tesseract.recognize(canvas, 'ara');
 
     document.getElementById('fullText').value = text;
 
-    const { idNumber, phoneNumber, birthdate, name } = extractDetails(text);
+    const { idNumber, phoneNumber, birthdate, issueDate, expiryDate, name, father, mother } = extractDetails(text);
 
     document.getElementById('idField').value = idNumber;
     document.getElementById('phoneField').value = phoneNumber;
     document.getElementById('birthField').value = birthdate;
+    document.getElementById('issueField').value = issueDate;
+    document.getElementById('expiryField').value = expiryDate;
     document.getElementById('nameField').value = name;
+    document.getElementById('fatherField').value = father;
+    document.getElementById('motherField').value = mother;
   }
 
   document.getElementById('startBtn').onclick = startCamera;
